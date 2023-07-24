@@ -1,0 +1,155 @@
+--  MARK 11 (Adição do campo de margem por vendedor, vale observar que essa subconsulta limita o resultado a apenas uma seleção por vez) 
+-- (vou tentar adicionar uma view dessa subconsulta para tentar eliminar o problema de limitação de multipla seleção. resumindo habilitar a seleção multipla novamente)
+
+select
+  PCPEDC.CODUSUR,
+  PCUSUARI.NOME,
+  to_char(nvl(PCUSUARI.VLVENDAPREV,0), '9G999G999G999D99', 'NLS_NUMERIC_CHARACTERS = '',.''') as META,
+  to_char(PCNFENT.VLTOTAL, '9G999G999G999D99', 'NLS_NUMERIC_CHARACTERS = '',.''') as TOTAL_DEVL,
+  to_char(TOTAL_PCPEDC.VLATEND, '9G999G999G999D99', 'NLS_NUMERIC_CHARACTERS = '',.''') as TOTAL,
+  ( select
+    to_char((((sum(PCPEDI.PVENDA) over () - SUM(nvl(PCEST.CUSTOULTENT, 0) - nvl(PCTRIBUT.PERDESCCUSTO, 0) + nvl(PCREGIAO.VLFRETEKG, 0) + (nvl(PCTABPR.PVENDA * nvl(PCPRODUT.PCOMREP1, 0) / 100, 0)) + (nvl(PCTABPR.PVENDA * nvl(PCTRIBUT.CODICMTAB, 0) / 100, 0))) over ()) / sum(PCPEDI.PVENDA) over ())* 100),'9G999G999G999D99', 'NLS_NUMERIC_CHARACTERS = '',.''') AS TESTE
+from
+    PCPRODUT,
+    PCEST,
+    PCPRODFILIAL,
+    PCDEPTO,
+    PCFORNEC,
+    PCTABPR,
+    PCTRIBUT,
+    PCFILIAL,
+    PCCONSUM,
+    PCREGIAO,
+    PCCOTACAOMOEDAI,
+    PCTABTRIB,
+    PCPEDC,
+    PCPEDI,
+    PCMOV
+where
+    PCPRODUT.CODEPTO = PCDEPTO.CODEPTO
+    and PCPRODUT.CODFORNEC = PCFORNEC.CODFORNEC
+    and PCEST.DTULTENT = PCCOTACAOMOEDAI.DATACOTACAO(+)
+    --and PCCOTACAOMOEDAI.CODIGO(+) = :CODMOEDA
+    and PCPRODUT.CODPROD = PCEST.CODPROD
+    and PCPRODUT.CODPROD = PCTABPR.CODPROD
+    -- and PCTABPR.NUMREGIAO = DECODE(nvl(2,-1),-1, nvl(PCFILIAL.NUMREGIAOPADRAO, PCCONSUM.NUMREGIAOPADRAO), 2)
+    and PCTABPR.NUMREGIAO = PCREGIAO.NUMREGIAO
+    and PCEST.CODFILIAL = PCPRODFILIAL.CODFILIAL
+    and PCEST.CODPROD = PCPRODFILIAL.CODPROD
+    and PCEST.CODFILIAL = PCPEDC.CODFILIAL
+    and PCFILIAL.CODIGO = PCEST.CODFILIAL
+    and PCPRODUT.CODPROD = PCPEDI.CODPROD
+    and PCTABTRIB.CODFILIALNF in ('2','3','4')
+    and PCTABTRIB.UFDESTINO = PCREGIAO.UF
+    and PCTABTRIB.CODPROD = PCTABPR.CODPROD
+    and PCTABTRIB.CODST = PCTRIBUT.CODST
+  --  and PCPEDC.NUMPED = '1032000755'
+    and PCMOV.QT = PCPEDI.QT
+    and PCMOV.PUNIT = PCPEDI.PVENDA
+    and PCPEDC.CODUSUR in ('1011')
+    and PCPEDC.DATA between '01/07/2023' and '31/07/2023'
+    and PCPEDI.NUMPED = PCPEDC.NUMPED
+    -- and PCPEDI.CODPROD = '893'
+    and PCTABPR.NUMREGIAO = PCPEDC.NUMREGIAO
+group by
+    PCTABPR.PVENDA,
+    PCPEDI.PVENDA,
+    PCEST.CUSTOULTENT,
+    PCTRIBUT.PERDESCCUSTO,
+    PCREGIAO.VLFRETEKG,
+    PCPRODUT.PCOMREP1,
+    PCTRIBUT.CODICMTAB,
+    PCPEDI.CODPROD,
+    PCREGIAO.NUMREGIAO,
+    PCMOV.QT,
+    PCMOV.PUNIT,
+    PCPEDC.NUMPED
+order by
+    PCPEDI.PVENDA
+    fetch first 1 rows only
+    ) as MARGEM,
+  to_char(coalesce(SUM(COMISSAO_AGENCIADOR), 0), '9G999G999G999D99', 'NLS_NUMERIC_CHARACTERS = '',.''') as TOTAL_AGC,
+  to_char((TOTAL_PCPEDC.VLATEND  - coalesce (PCNFENT.VLTOTAL,0) - coalesce(SUM(COMISSAO_AGENCIADOR), 0)), '9G999G999G999D99', 'NLS_NUMERIC_CHARACTERS = '',.''') as LIQD,
+  to_char((TOTAL_PCPEDC.VLATEND  - coalesce (PCNFENT.VLTOTAL,0) - coalesce(SUM(COMISSAO_AGENCIADOR), 0)) * 0.005, '9G999G999G999D99', 'NLS_NUMERIC_CHARACTERS = '',.''') as comissao,
+  to_char((TOTAL_PCPEDC.VLATEND  - coalesce (PCNFENT.VLTOTAL,0) - coalesce(SUM(COMISSAO_AGENCIADOR), 0)) * 0.0025, '9G999G999G999D99', 'NLS_NUMERIC_CHARACTERS = '',.''') as comissao_margem,
+  to_char((((((((TOTAL_PCPEDC.VLATEND  - coalesce (PCNFENT.VLTOTAL,0) - coalesce(SUM(COMISSAO_AGENCIADOR), 0)) * 0.005) + 
+    (TOTAL_PCPEDC.VLATEND - coalesce (PCNFENT.VLTOTAL,0) - coalesce(SUM(COMISSAO_AGENCIADOR), 0)) * 0.0025))))
+     + case when SUM(COMISSAO_AGENCIADOR) is null then 1 else 0 end), '9G999G999G999D99', 'NLS_NUMERIC_CHARACTERS = '',.''') as comissao_margem_meta,
+  to_char((TOTAL_PCPEDC.VLATEND  - coalesce (PCNFENT.VLTOTAL,0) - coalesce(SUM(COMISSAO_AGENCIADOR), 0)) * 0.0025, '9G999G999G999D99', 'NLS_NUMERIC_CHARACTERS = '',.''') as comissao_meta,
+  to_char((((((((TOTAL_PCPEDC.VLATEND  - coalesce (PCNFENT.VLTOTAL,0) - coalesce(SUM(COMISSAO_AGENCIADOR), 0)) * 0.005) + 
+    (TOTAL_PCPEDC.VLATEND  - coalesce (PCNFENT.VLTOTAL,0) - coalesce(SUM(COMISSAO_AGENCIADOR), 0)) * 0.0025) + 
+    (TOTAL_PCPEDC.VLATEND  - coalesce (PCNFENT.VLTOTAL,0) - coalesce(SUM(COMISSAO_AGENCIADOR), 0)) * 0.0025)))) 
+     + case when SUM(COMISSAO_AGENCIADOR) is null then 1 else 0 end, '9G999G999G999D99', 'NLS_NUMERIC_CHARACTERS = '',.''') as comissao_TOTAL
+from
+  PCPEDC
+left join
+  PCNFSAID on PCPEDC.NUMPED = PCNFSAID.NUMPED
+left join
+  VW_COMISSAO_AGENCIADA on PCPEDC.NUMTRANSVENDA = VW_COMISSAO_AGENCIADA.NUMTRANSVENDA
+join
+  PCUSUARI on PCPEDC.CODUSUR = PCUSUARI.CODUSUR
+join
+  (
+    select
+      PCPEDC.CODUSUR,
+      sum(PCPEDC.VLATEND) as VLATEND
+    from
+      PCPEDC
+    where
+      PCPEDC.POSICAO = 'F'
+      and PCPEDC.DATA
+      between 
+      '01/07/2023'
+     and
+      '31/07/2023'
+      and 
+      PCPEDC.CODFILIAL = PCPEDC.CODFILIAL 
+      and 
+      PCPEDC.CODUSUR = PCPEDC.CODUSUR
+    group by
+      PCPEDC.CODUSUR
+  ) TOTAL_PCPEDC on PCPEDC.CODUSUR = TOTAL_PCPEDC.CODUSUR
+left join
+  (
+    select
+      CODUSURDEVOL,
+      sum(VLTOTAL) as VLTOTAL
+    from
+      PCNFENT
+    where
+      CODDEVOL <> '43'
+      and DTENT
+    between
+      '01/07/2023'
+     and
+      '31/07/2023'
+     and 
+      PCNFENT.CODFILIAL in ('2','3','4')
+     and 
+      PCNFENT.CODUSURDEVOL in ('1011')
+    group by
+      CODUSURDEVOL
+  ) PCNFENT on PCPEDC.CODUSUR = PCNFENT.CODUSURDEVOL
+    where
+      PCPEDC.POSICAO = 'F'
+     and PCPEDC.DATA
+      between 
+      '01/07/2023'
+     and
+      '31/07/2023'
+      and 
+      PCPEDC.CODFILIAL in ('2','3','4')
+      and 
+      PCPEDC.CODUSUR in ('1011')
+      and 
+      PCNFSAID.TIPOMOVGARANTIA is null
+      and
+      PCNFSAID.CONDVENDA in ('1','7')
+group by
+  PCPEDC.CODUSUR,
+  PCUSUARI.NOME,
+  TOTAL_PCPEDC.VLATEND,
+  PCNFENT.VLTOTAL,
+  PCUSUARI.VLVENDAPREV
+order by
+  PCPEDC.CODUSUR asc;
