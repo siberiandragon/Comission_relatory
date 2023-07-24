@@ -1,0 +1,111 @@
+
+--MARK 10 (Rotina persinalizada para Vizualização de Vendedores)
+select
+  PCPEDC.CODUSUR,
+  PCUSUARI.NOME,
+  to_char(nvl(PCUSUARI.VLVENDAPREV,0), '9G999G999G999D99', 'NLS_NUMERIC_CHARACTERS = '',.''') as META,
+  to_char(PCNFENT.VLTOTAL, '9G999G999G999D99', 'NLS_NUMERIC_CHARACTERS = '',.''') as TOTAL_DEVL,
+  to_char(TOTAL_PCPEDC.VLATEND, '9G999G999G999D99', 'NLS_NUMERIC_CHARACTERS = '',.''') as TOTAL,
+  to_char(coalesce(SUM(COMISSAO_AGENCIADOR), 0), '9G999G999G999D99', 'NLS_NUMERIC_CHARACTERS = '',.''') as TOTAL_AGC,
+  to_char((TOTAL_PCPEDC.VLATEND  - coalesce (PCNFENT.VLTOTAL,0) - coalesce(SUM(COMISSAO_AGENCIADOR), 0)), '9G999G999G999D99', 'NLS_NUMERIC_CHARACTERS = '',.''') as LIQD,
+  to_char((TOTAL_PCPEDC.VLATEND  - coalesce (PCNFENT.VLTOTAL,0) - coalesce(SUM(COMISSAO_AGENCIADOR), 0)) * 0.005, '9G999G999G999D99', 'NLS_NUMERIC_CHARACTERS = '',.''') as comissao,
+  to_char((TOTAL_PCPEDC.VLATEND  - coalesce (PCNFENT.VLTOTAL,0) - coalesce(SUM(COMISSAO_AGENCIADOR), 0)) * 0.0025, '9G999G999G999D99', 'NLS_NUMERIC_CHARACTERS = '',.''') as comissao_margem,
+  to_char((((((((TOTAL_PCPEDC.VLATEND  - coalesce (PCNFENT.VLTOTAL,0) - coalesce(SUM(COMISSAO_AGENCIADOR), 0)) * 0.005) + 
+    (TOTAL_PCPEDC.VLATEND - coalesce (PCNFENT.VLTOTAL,0) - coalesce(SUM(COMISSAO_AGENCIADOR), 0)) * 0.0025))))
+     + case when SUM(COMISSAO_AGENCIADOR) is null then 1 else 0 end), '9G999G999G999D99', 'NLS_NUMERIC_CHARACTERS = '',.''') as comissao_margem_meta,
+  to_char((TOTAL_PCPEDC.VLATEND  - coalesce (PCNFENT.VLTOTAL,0) - coalesce(SUM(COMISSAO_AGENCIADOR), 0)) * 0.0025, '9G999G999G999D99', 'NLS_NUMERIC_CHARACTERS = '',.''') as comissao_meta,
+  to_char((((((((TOTAL_PCPEDC.VLATEND  - coalesce (PCNFENT.VLTOTAL,0) - coalesce(SUM(COMISSAO_AGENCIADOR), 0)) * 0.005) + 
+    (TOTAL_PCPEDC.VLATEND  - coalesce (PCNFENT.VLTOTAL,0) - coalesce(SUM(COMISSAO_AGENCIADOR), 0)) * 0.0025) + 
+    (TOTAL_PCPEDC.VLATEND  - coalesce (PCNFENT.VLTOTAL,0) - coalesce(SUM(COMISSAO_AGENCIADOR), 0)) * 0.0025)))) 
+     + case when SUM(COMISSAO_AGENCIADOR) is null then 1 else 0 end, '9G999G999G999D99', 'NLS_NUMERIC_CHARACTERS = '',.''') as comissao_TOTAL
+from
+  PCPEDC
+left join
+  PCNFSAID on PCPEDC.NUMPED = PCNFSAID.NUMPED
+left join
+  VW_COMISSAO_AGENCIADA on PCPEDC.NUMTRANSVENDA = VW_COMISSAO_AGENCIADA.NUMTRANSVENDA
+join
+  PCUSUARI on PCPEDC.CODUSUR = PCUSUARI.CODUSUR
+join
+  PCEMPR on PCUSUARI.CODUSUR = PCEMPR.CODUSUR
+join 
+  PCROTINA on PCEMPR.MATRICULA  = PCEMPR.MATRICULA 
+join
+  (
+    select
+      PCPEDC.CODUSUR,
+      sum(PCPEDC.VLATEND) as VLATEND
+    from
+      PCPEDC
+    where
+      PCPEDC.POSICAO = 'F'
+      and PCPEDC.DATA
+      between 
+      '01/06/2023'
+      and 
+      '30/06/2023'
+      and 
+      PCPEDC.CODFILIAL = PCPEDC.CODFILIAL 
+      and 
+      PCPEDC.CODUSUR = PCPEDC.CODUSUR
+    group by
+      PCPEDC.CODUSUR
+  ) TOTAL_PCPEDC on PCPEDC.CODUSUR = TOTAL_PCPEDC.CODUSUR
+left join
+  (
+    select
+      CODUSURDEVOL,
+      sum(VLTOTAL) as VLTOTAL
+    from
+      PCNFENT
+    join
+  PCUSUARI on PCNFENT.CODUSURDEVOL = PCUSUARI.CODUSUR
+join
+  PCEMPR on PCUSUARI.CODUSUR = PCEMPR.CODUSUR
+join 
+  PCROTINA on PCEMPR.MATRICULA  = PCEMPR.MATRICULA 
+    where
+      CODDEVOL <> '43'
+      and DTENT
+    between
+      '01/06/2023'
+      and 
+      '30/06/2023'
+     and 
+      PCNFENT.CODFILIAL in ('2','3','4')
+      and 
+      PCNFENT.CODUSURDEVOL = PCUSUARI.CODUSUR
+      and 
+      PCEMPR.MATRICULA = '43'
+      and 
+      PCROTINA.CODIGO = '8035'
+    group by
+      CODUSURDEVOL
+  ) PCNFENT on PCPEDC.CODUSUR = PCNFENT.CODUSURDEVOL
+    where
+      PCPEDC.POSICAO = 'F'
+     and PCPEDC.DATA
+      between 
+      '01/06/2023'
+      and 
+      '30/06/2023'
+      and 
+      PCPEDC.CODFILIAL in ('2','3','4')
+      and 
+      PCPEDC.CODUSUR = PCUSUARI.CODUSUR
+      and 
+      PCEMPR.MATRICULA = '43'
+      and 
+      PCROTINA.CODIGO = '8035'
+      and
+      PCNFSAID.TIPOMOVGARANTIA is null
+      and
+      PCNFSAID.CONDVENDA in ('1','7')
+group by
+  PCPEDC.CODUSUR,
+  PCUSUARI.NOME,
+  TOTAL_PCPEDC.VLATEND,
+  PCNFENT.VLTOTAL,
+  PCUSUARI.VLVENDAPREV
+order by
+  PCPEDC.CODUSUR asc;
