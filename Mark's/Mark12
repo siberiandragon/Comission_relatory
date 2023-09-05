@@ -1,0 +1,122 @@
+  --MARK 12 ( adição do campo de margem com o calculo correto, adendo da subtração dos valores respectivos e CUSTO,FATURAMENTO e Receita para caso haja devoluções)
+  
+  select
+  PCPEDC.CODUSUR,
+  PCUSUARI.NOME,
+  to_char(nvl(PCUSUARI.VLVENDAPREV,0), '9G999G999G999D99', 'NLS_NUMERIC_CHARACTERS = '',.''') as META,
+  to_char(PCNFENT.VLTOTAL, '9G999G999G999D99', 'NLS_NUMERIC_CHARACTERS = '',.''') as TOTAL_DEVL,
+  to_char(TOTAL_PCPEDC.VLATEND, '9G999G999G999D99', 'NLS_NUMERIC_CHARACTERS = '',.''') as TOTAL,
+  (select 
+    to_char((sum(S.FATURAMENTO - S.CUSTO) / sum(S.FATURAMENTO)) * 100,'9G999G999G999D99','NLS_NUMERIC_CHARACTERS = '',.') as MARG 
+from  (
+    select
+        F.CODUSUR,
+        sum((F.CUSTOULTENT * F.QT) + (((F.PERCOM/100) * F.PUNIT) * F.QT) + (((F.CODICMTAB/100) * F.PUNIT) * F.QT)) as CUSTO,
+        sum((F.PUNIT * F.QT) + (nvl(F.VLFRETE, 0) * F.QT) + (nvl(F.VLOUTROS, 0) * F.QT)) as FATURAMENTO,
+        sum((F.PUNIT * F.QT) + (nvl(F.VLFRETE, 0) * F.QT) + (nvl(F.VLOUTROS, 0) * F.QT)
+        - (F.CUSTOULTENT * F.QT) - (((F.PERCOM/100) * F.PUNIT) * F.QT) - (((F.CODICMTAB/100) * F.PUNIT) * F.QT)) as REC
+    from
+        PCMOV F
+        left join PCCLIENT C on C.CODCLI = F.CODCLI
+        left join PCUSUARI S on S.CODUSUR = F.CODUSUR
+    where
+        F.CODOPER in ('S')
+        and F.CODFISCAL not in (5117, 6117)
+        and F.DTCANCEL is null
+        and (F.CODDEVOL not in (43) or F.CODDEVOL is null)
+        and F.CODUSUR in ('1039')
+        and F.CODFILIAL in ('2','3','4')
+        and F.DTMOV between ('01/08/2023') and ('17/08/2023')
+    group by
+        F.CODUSUR
+
+    union all
+
+    select
+        F.CODUSUR,
+        sum(-((F.CUSTOULTENT * F.QT) + (((F.PERCOM/100) * F.PUNIT) * F.QT) + (((F.CODICMTAB/100) * F.PUNIT) * F.QT))) as CUSTO,
+        sum(-((F.PUNIT * F.QT) + (nvl(F.VLFRETE, 0) * F.QT) + (nvl(F.VLOUTROS, 0) * F.QT))) as FATURAMENTO,
+        sum(-((F.PUNIT * F.QT) + (nvl(F.VLFRETE, 0) * F.QT) + (nvl(F.VLOUTROS, 0) * F.QT))
+        - ((F.CUSTOULTENT * F.QT) + (((F.PERCOM/100) * F.PUNIT) * F.QT) + (((F.CODICMTAB/100) * F.PUNIT) * F.QT))) as REC
+    from
+        PCMOV F
+        left join PCCLIENT C on C.CODCLI = F.CODCLI
+        left join PCUSUARI S on S.CODUSUR = F.CODUSUR
+    where
+        F.CODOPER in ('ED')
+        and F.CODFISCAL not in (5117, 6117)
+        and F.DTCANCEL is null
+        and (F.CODDEVOL not in (43) or F.CODDEVOL is null)
+        and F.CODUSUR in ('1039')
+        and F.CODFILIAL in ('2','3','4')
+        and F.DTMOV between ('01/08/2023') and ('17/08/2023')
+    group by
+        F.CODUSUR
+) S
+group by
+    S.CODUSUR) as MARGEM,
+  to_char(coalesce(SUM(COMISSAO_AGENCIADOR), 0), '9G999G999G999D99', 'NLS_NUMERIC_CHARACTERS = '',.''') as TOTAL_AGC,
+  to_char((TOTAL_PCPEDC.VLATEND  - coalesce (PCNFENT.VLTOTAL,0) - coalesce(SUM(COMISSAO_AGENCIADOR), 0)), '9G999G999G999D99', 'NLS_NUMERIC_CHARACTERS = '',.''') as LIQD,
+  to_char((TOTAL_PCPEDC.VLATEND  - coalesce (PCNFENT.VLTOTAL,0) - coalesce(SUM(COMISSAO_AGENCIADOR), 0)) * 0.005, '9G999G999G999D99', 'NLS_NUMERIC_CHARACTERS = '',.''') as comissao,
+  to_char((TOTAL_PCPEDC.VLATEND  - coalesce (PCNFENT.VLTOTAL,0) - coalesce(SUM(COMISSAO_AGENCIADOR), 0)) * 0.0025, '9G999G999G999D99', 'NLS_NUMERIC_CHARACTERS = '',.''') as comissao_margem,
+  to_char((((((((TOTAL_PCPEDC.VLATEND  - coalesce (PCNFENT.VLTOTAL,0) - coalesce(SUM(COMISSAO_AGENCIADOR), 0)) * 0.005) + 
+    (TOTAL_PCPEDC.VLATEND - coalesce (PCNFENT.VLTOTAL,0) - coalesce(SUM(COMISSAO_AGENCIADOR), 0)) * 0.0025))))
+     + case when SUM(COMISSAO_AGENCIADOR) is null then 1 else 0 end), '9G999G999G999D99', 'NLS_NUMERIC_CHARACTERS = '',.''') as comissao_margem_meta,
+  to_char((TOTAL_PCPEDC.VLATEND  - coalesce (PCNFENT.VLTOTAL,0) - coalesce(SUM(COMISSAO_AGENCIADOR), 0)) * 0.0025, '9G999G999G999D99', 'NLS_NUMERIC_CHARACTERS = '',.''') as comissao_meta,
+  to_char((((((((TOTAL_PCPEDC.VLATEND  - coalesce (PCNFENT.VLTOTAL,0) - coalesce(SUM(COMISSAO_AGENCIADOR), 0)) * 0.005) + 
+    (TOTAL_PCPEDC.VLATEND  - coalesce (PCNFENT.VLTOTAL,0) - coalesce(SUM(COMISSAO_AGENCIADOR), 0)) * 0.0025) + 
+    (TOTAL_PCPEDC.VLATEND  - coalesce (PCNFENT.VLTOTAL,0) - coalesce(SUM(COMISSAO_AGENCIADOR), 0)) * 0.0025)))) 
+     + case when SUM(COMISSAO_AGENCIADOR) is null then 1 else 0 end, '9G999G999G999D99', 'NLS_NUMERIC_CHARACTERS = '',.''') as comissao_TOTAL
+from
+  PCPEDC
+left join PCNFSAID on PCPEDC.NUMPED = PCNFSAID.NUMPED
+left join VW_COMISSAO_AGENCIADA on PCPEDC.NUMTRANSVENDA = VW_COMISSAO_AGENCIADA.NUMTRANSVENDA
+join PCUSUARI on PCPEDC.CODUSUR = PCUSUARI.CODUSUR
+join
+  (
+    select
+      PCPEDC.CODUSUR,
+      sum(PCPEDC.VLATEND) as VLATEND
+    from
+      PCPEDC
+    where
+      PCPEDC.POSICAO = 'F'
+      and PCPEDC.DTFAT
+      between '01/08/2023' and '17/08/2023'
+      and PCPEDC.CODFILIAL = PCPEDC.CODFILIAL 
+      and PCPEDC.CODUSUR = PCPEDC.CODUSUR
+    group by
+      PCPEDC.CODUSUR
+  ) TOTAL_PCPEDC on PCPEDC.CODUSUR = TOTAL_PCPEDC.CODUSUR
+left join
+  (
+    select
+      CODUSURDEVOL,
+      sum(VLTOTAL) as VLTOTAL
+    from
+      PCNFENT
+    where
+      CODDEVOL <> '43'
+     and DTENT
+     between ('01/08/2023') and ('17/08/2023')
+     and  PCNFENT.CODFILIAL in ('2','3','4')
+     and PCNFENT.CODUSURDEVOL in ('1039')
+    group by
+      CODUSURDEVOL
+  ) PCNFENT on PCPEDC.CODUSUR = PCNFENT.CODUSURDEVOL
+    where
+      PCPEDC.POSICAO = 'F'
+     and PCPEDC.DTFAT
+      between  '01/08/2023' and '17/08/2023'
+      and  PCPEDC.CODFILIAL in ('2','3','4')
+      and  PCPEDC.CODUSUR in ('1039')
+      and  PCNFSAID.TIPOMOVGARANTIA is null
+      and  PCNFSAID.CONDVENDA in ('1','7')
+group by
+  PCPEDC.CODUSUR,
+  PCUSUARI.NOME,
+  TOTAL_PCPEDC.VLATEND,
+  PCNFENT.VLTOTAL,
+  PCUSUARI.VLVENDAPREV
+order by
+  PCPEDC.CODUSUR asc;
